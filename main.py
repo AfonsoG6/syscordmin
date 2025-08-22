@@ -8,6 +8,7 @@ from discord import (
     File,
     User,
     Member,
+    Interaction
 )
 import subprocess
 from os.path import dirname, realpath, join
@@ -129,6 +130,13 @@ async def on_message(message: Message):
         except Exception as e:
             logging.exception(e)
             await channel.send(f"An error occurred while executing the command: {e}")
+
+@BOT.tree.command(name="init", description="Initialize the bot")
+async def init_bot(interaction: Interaction):
+    if not is_user_allowed(interaction.user):
+        await interaction.response.send_message("You are not authorized to use this command.", ephemeral=True)
+        return
+    await send_msg_to_user(interaction.user.id, "Bot has been initialized. You can now use this channel to send commands to the server.")
 
 #-----------------------------Run and Connect Bot------------------------------
 
