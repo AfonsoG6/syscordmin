@@ -9,29 +9,12 @@ from discord import (
     Interaction
 )
 import subprocess
-from os.path import dirname, realpath, join
-from os import getenv, makedirs, remove
+from os import path, getenv, makedirs, remove
 from logging.handlers import TimedRotatingFileHandler
 import logging
 from requests import get, Response
 
 #-----------------------Initiate all global variables--------------------------
-
-PROJECT_PATH: str  = dirname(realpath(__file__))
-DATA_PATH: str  = join(PROJECT_PATH, "data")
-makedirs(DATA_PATH, exist_ok=True)
-LOG_PATH: str  = join(DATA_PATH, "main.log")
-PUBLIC_IP_PATH: str = join(DATA_PATH, "public_ip.txt")
-TEMP_PATH: str = join(DATA_PATH, "temp")
-makedirs(TEMP_PATH, exist_ok=True)
-
-logging_handler = TimedRotatingFileHandler(filename=LOG_PATH, when="D", interval=30)
-logging.basicConfig(
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    datefmt="%d-%b-%y %H:%M:%S",
-    level=logging.INFO,
-    handlers=[logging_handler],
-)
 
 class BotClient(Client):
     def __init__(self, *args, **kwargs):
@@ -43,12 +26,28 @@ class BotClient(Client):
         print(f"Finished setup. Logged in as {self.user}")
         self.loop.create_task(loop())
 
+PROJECT_PATH: str  = path.dirname(path.realpath(__file__))
+DATA_PATH: str  = path.join(PROJECT_PATH, "data")
+LOG_PATH: str  = path.join(DATA_PATH, "main.log")
+PUBLIC_IP_PATH: str = path.join(DATA_PATH, "public_ip.txt")
+TEMP_PATH: str = path.join(DATA_PATH, "temp")
 
 BOT: BotClient = BotClient(intents=Intents.all())
-
-WHITELIST: list = [int(id.strip()) for id in getenv("WHITELIST", "").split(",") if id.strip().isdigit()]
+WHITELIST: list
 
 #---------------------------------Functions------------------------------------
+
+def load_whitelist() -> list:
+    whitelist_env = str(getenv("WHITELIST", ""))
+    whitelist = []
+    for id_str in whitelist_env.split(","):
+        try:
+            id: int = int(id_str.strip())
+            whitelist.append(id)
+        except ValueError:
+            continue
+    logging.info(f"Loaded whitelist: {whitelist}")
+    return whitelist
 
 def is_user_allowed(user) -> bool:
     return user.id in WHITELIST
@@ -83,8 +82,11 @@ async def loop():
         try:
             current_ip: str = getPublicIP()
             stored_ip: str = ""
-            with open(PUBLIC_IP_PATH, "r") as f:
-                stored_ip = f.read().strip()
+            if path.exists(PUBLIC_IP_PATH):
+                with open(PUBLIC_IP_PATH, "r") as f:
+                    stored_ip = f.read().strip()
+            else:
+                stored_ip = ""
             if current_ip == "":
                 msg: str = f"Public IP address could not be retrieved. Last known Public IP: {stored_ip}"
                 logging.warning(msg)
@@ -118,7 +120,7 @@ async def on_message(message: Message):
             output = f"[RETURN_CODE={result.returncode}]\n[OUTPUT]\n{result.stdout}\n[ERRORS]\n{result.stderr}"
             # Send the output back to the user
             if len(output) > 1900:
-                temp_file_path = join(TEMP_PATH, f"output_{message.id}.txt")
+                temp_file_path = path.join(TEMP_PATH, f"output_{message.id}.txt")
                 with open(temp_file_path, "w") as f:
                     f.write(output)
                 await channel.send(file=File(temp_file_path))
@@ -139,6 +141,17 @@ async def init_bot(interaction: Interaction):
 #-----------------------------Run and Connect Bot------------------------------
 
 if __name__ == "__main__":
+    makedirs(DATA_PATH, exist_ok=True)
+    makedirs(TEMP_PATH, exist_ok=True)
+    logging_handler = TimedRotatingFileHandler(filename=LOG_PATH, when="D", interval=30)
+    logging.basicConfig(
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        datefmt="%d-%b-%y %H:%M:%S",
+        level=logging.INFO,
+        handlers=[logging_handler],
+    )
+
+    WHITELIST = load_whitelist()
     while True:
         try:
             load_dotenv()
