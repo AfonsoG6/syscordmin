@@ -151,17 +151,16 @@ if __name__ == "__main__":
         handlers=[logging_handler],
     )
 
+    load_dotenv()
     WHITELIST = load_whitelist()
-    while True:
-        try:
-            load_dotenv()
-            token = getenv('TOKEN')
-            if token == None:
-                print("[ERROR] Please provide a token in the .env file.")
-                exit(1)
-            BOT.run(token)
-        except Exception as e:
-            print("[ERROR] An error occurred while running the bot:")
-            print(e)
-            logging.exception(e)
-            exit(1)
+    token = getenv('TOKEN')
+    if token == None:
+        print("[ERROR] Please provide a token in the .env file.")
+        exit(1)
+    try:
+        BOT.run(token)
+    except Exception as e:
+        print("[ERROR] An error occurred while running the bot:")
+        print(e)
+        logging.exception(e)
+        exit(1)
