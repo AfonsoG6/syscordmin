@@ -120,7 +120,11 @@ async def on_message(message: Message):
                 return
             # Execute the command
             result = subprocess.run(command, shell=True, capture_output=True, text=True)
-            output = f"[RETURN_CODE={result.returncode}]\n[OUTPUT]\n{result.stdout}\n[ERRORS]\n{result.stderr}"
+            output = f"[RETURN_CODE={result.returncode}]"
+            if result.stdout and len(result.stdout.strip()) > 0:
+                output += f"\n[OUTPUT]\n{result.stdout}"
+            if result.stderr and len(result.stderr.strip()) > 0:
+                output += f"\n[ERRORS]\n{result.stderr}"
             # Send the output back to the user
             if len(output) > 1900:
                 temp_file_path = path.join(TEMP_PATH, f"output_{message.id}.txt")
