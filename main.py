@@ -107,13 +107,16 @@ async def loop():
 async def on_message(message: Message):
     channel = message.channel
     command = message.content
+    author = message.author
+    if author.bot or author.id == BOT.user.id:
+        return
     await channel.send(f"Executing command: {command}")
     # Set typing status
     async with channel.typing():
         try:
-            if not is_user_allowed(message.author):
+            if not is_user_allowed(author):
                 await channel.send("You are not authorized to use this bot.")
-                logging.warning(f"Unauthorized access attempt by user {message.author} (ID: {message.author.id})")
+                logging.warning(f"Unauthorized access attempt by user {author} (ID: {author.id})")
                 return
             # Execute the command
             result = subprocess.run(command, shell=True, capture_output=True, text=True)
@@ -137,6 +140,7 @@ async def init_bot(interaction: Interaction):
         await interaction.response.send_message("You are not authorized to use this command.", ephemeral=True)
         return
     await send_msg_to_user(interaction.user.id, "Bot has been initialized. You can now use this channel to send commands to the server.")
+    await interaction.response.send_message("Bot has been initialized. Check your DMs to continue.", ephemeral=True)
 
 #-----------------------------Run and Connect Bot------------------------------
 
