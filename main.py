@@ -6,8 +6,6 @@ from discord import (
     Client,
     app_commands,
     File,
-    User,
-    Member,
     Interaction
 )
 import subprocess
@@ -52,7 +50,7 @@ WHITELIST: list = [int(id.strip()) for id in getenv("WHITELIST", "").split(",") 
 
 #---------------------------------Functions------------------------------------
 
-def is_user_allowed(user: User | Member) -> bool:
+def is_user_allowed(user) -> bool:
     return user.id in WHITELIST
 
 def getPublicIP() -> str:
