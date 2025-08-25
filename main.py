@@ -449,6 +449,10 @@ class InteractiveShellView(ui.LayoutView):
                 # Find the PID of the child process of self.process and send the signal to that PID
                 children = [c for c in parent_proc.children(recursive=False) if c.is_running() and c.status() != psutil.STATUS_ZOMBIE]
                 assert children
+                for c in children:
+                    print(f"PID: {c.pid}, Name: {c.name()}, Status: {c.status()}, {c.children()}")
+                    for gc in c.children():
+                        print(f"\tPID: {gc.pid}, Name: {gc.name()}, Status: {gc.status()}")
                 child = max(children, key=lambda c: (c.create_time() or 0))
 
                 if sys.platform == "win32":
