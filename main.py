@@ -454,11 +454,7 @@ class InteractiveShellView(ui.LayoutView):
                 if sys.platform == "win32":
                     psutil.Process(child.pid).send_signal(sig_value)
                 else:
-                    try:
-                        pgid = os.getpgid(child.pid)
-                        os.killpg(pgid, sig_value)
-                    except Exception:
-                        os.kill(child.pid, sig_value)
+                    os.kill(child.pid, sig_value)
                 logging.info(f"Successfully sent signal: {self.selected_signal}")
             except ProcessLookupError:
                 logging.warning("Process not found.")
