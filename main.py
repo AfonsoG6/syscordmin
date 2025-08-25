@@ -99,21 +99,23 @@ def load_supported_shells() -> None:
 
 
 def load_default_cmd_timeout() -> None:
-    global DEFAULT_CMD_TIMEOUT
+    global DEFAULT_CMD_TIMEOUT, CMD_TIMEOUT
     env: Optional[str] = getenv("DEFAULT_CMD_TIMEOUT")
     if env is not None:
         try:
             DEFAULT_CMD_TIMEOUT = float(env.strip())
+            CMD_TIMEOUT = DEFAULT_CMD_TIMEOUT
         except ValueError:
             logging.error(f"Invalid DEFAULT_CMD_TIMEOUT value: {env}")
 
 
 def load_default_scroll_amount() -> None:
-    global DEFAULT_SCROLL_AMOUNT
+    global DEFAULT_SCROLL_AMOUNT, SCROLL_AMOUNT
     env: Optional[str] = getenv("DEFAULT_SCROLL_AMOUNT")
     if env is not None:
         try:
             DEFAULT_SCROLL_AMOUNT = int(env.strip())
+            SCROLL_AMOUNT = DEFAULT_SCROLL_AMOUNT
         except ValueError:
             logging.error(f"Invalid DEFAULT_SCROLL_AMOUNT value: {env}")
 
