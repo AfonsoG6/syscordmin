@@ -14,6 +14,7 @@ import os
 import shlex
 import shutil
 import re
+import psutil
 
 # -----------------------Initiate all global variables--------------------------
 
@@ -56,8 +57,8 @@ CMD_TIMEOUT: float
 SCROLL_AMOUNT: int
 
 # Magic numbers
-WINDOW_BASE_AUTO_SCROLL: int = -1
-WINDOW_BASE_AUTO_SET: int = -2
+WINDOW_BASE_AUTO_SCROLL_ENABLE: int = -1
+WINDOW_BASE_AUTO_SCROLL_DISABLE: int = -2
 
 # Strip ANSI CSI (colors, cursor moves, bracketed paste on/off) and OSC (title changes)
 ANSI_CSI_RE = re.compile(r"(?:\x1B\[|\x9B)[0-?]*[ -/]*[@-~]")
@@ -277,7 +278,7 @@ class InteractiveShellView(ui.LayoutView):
         super().__init__(timeout=None)
         self.log: str = ""
         self.log_lock: Lock = Lock()
-        self.log_window_base: int = WINDOW_BASE_AUTO_SCROLL
+        self.log_window_base: int = WINDOW_BASE_AUTO_SCROLL_ENABLE
         self.log_window_base_lock: Lock = Lock()
         self.interaction: Interaction = interaction
         self.process: Optional[asyncio.subprocess.Process] = None
@@ -319,11 +320,11 @@ class InteractiveShellView(ui.LayoutView):
 
     async def set_log_window_base(self, value: int):
         async with self.log_window_base_lock:
-            self.log_window_base = value
+            self.log_window_base = max(0, min(value, await self.count_log_lines() - 1))
 
     async def set_auto_scroll(self):
         async with self.log_window_base_lock:
-            self.log_window_base = WINDOW_BASE_AUTO_SCROLL
+            self.log_window_base = WINDOW_BASE_AUTO_SCROLL_ENABLE
 
     async def build_log_message(self) -> str:
         async with self.log_window_base_lock:
@@ -359,8 +360,8 @@ class InteractiveShellView(ui.LayoutView):
                     body = lines[i] + body
                 else:
                     # Line (i) does not fit anymore
-                    if log_window_base == WINDOW_BASE_AUTO_SET:
-                        await self.set_log_window_base(i + 1)
+                    if log_window_base == WINDOW_BASE_AUTO_SCROLL_DISABLE:
+                        await self.set_log_window_base(i + 1 - SCROLL_AMOUNT)
                     break
         else:
             if log_window_base != 0:
@@ -406,16 +407,17 @@ class InteractiveShellView(ui.LayoutView):
     async def scroll_up_button(self, interaction: Interaction, button: ui.Button):
         await interaction.response.defer()
         async with self.log_window_base_lock:
-            if self.log_window_base == WINDOW_BASE_AUTO_SCROLL:
-                self.log_window_base = WINDOW_BASE_AUTO_SET
-            self.log_window_base = max(0, self.log_window_base - SCROLL_AMOUNT)
+            if self.log_window_base == WINDOW_BASE_AUTO_SCROLL_ENABLE:
+                self.log_window_base = WINDOW_BASE_AUTO_SCROLL_DISABLE
+            else:
+                self.log_window_base = max(0, self.log_window_base - SCROLL_AMOUNT)
         await self.render()
 
     @row_1.button(label="↓", style=ButtonStyle.secondary)
     async def scroll_down_button(self, interaction: Interaction, button: ui.Button):
         await interaction.response.defer()
         async with self.log_window_base_lock:
-            if self.log_window_base == WINDOW_BASE_AUTO_SCROLL:
+            if self.log_window_base == WINDOW_BASE_AUTO_SCROLL_ENABLE:
                 return
             self.log_window_base = min(await self.count_log_lines() - 1, self.log_window_base + SCROLL_AMOUNT)
         await self.render()
@@ -439,7 +441,22 @@ class InteractiveShellView(ui.LayoutView):
         await interaction.response.defer()
         if self.process and self.selected_signal is not None:
             try:
-                self.process.send_signal(self.selected_signal)
+                sig_value = int(self.selected_signal)
+                parent_proc = psutil.Process(self.process.pid)
+                
+                # Find the PID of the child process of self.process and send the signal to that PID
+                children = [c for c in parent_proc.children(recursive=False) if c.is_running() and c.status() != psutil.STATUS_ZOMBIE]
+                assert children
+                child = max(children, key=lambda c: (c.create_time() or 0))
+
+                if sys.platform == "win32":
+                    psutil.Process(child.pid).send_signal(sig_value)
+                else:
+                    try:
+                        pgid = os.getpgid(child.pid)
+                        os.killpg(pgid, sig_value)
+                    except Exception:
+                        os.kill(child.pid, sig_value)
                 logging.info(f"Successfully sent signal: {self.selected_signal}")
             except ProcessLookupError:
                 logging.warning("Process not found.")
