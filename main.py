@@ -13,6 +13,7 @@ import sys
 import os
 import shlex
 import shutil
+import re
 
 # -----------------------Initiate all global variables--------------------------
 
@@ -57,6 +58,10 @@ SCROLL_AMOUNT: int
 # Magic numbers
 WINDOW_BASE_AUTO_SCROLL: int = -1
 WINDOW_BASE_AUTO_SET: int = -2
+
+# Strip ANSI CSI (colors, cursor moves, bracketed paste on/off) and OSC (title changes)
+ANSI_CSI_RE = re.compile(r"(?:\x1B\[|\x9B)[0-?]*[ -/]*[@-~]")
+ANSI_OSC_RE = re.compile(r"\x1B\][^\x07\x1B]*(?:\x07|\x1B\\)")
 
 # ---------------------------------Functions------------------------------------
 
@@ -299,6 +304,15 @@ class InteractiveShellView(ui.LayoutView):
         BOT.loop.create_task(self.interactive_session_loop_task())
         await self.render()
 
+    def _sanitize_output(self, s: str) -> str:
+        # Remove OSC (window title) and CSI (colors, bracketed paste) sequences and BELs
+        s = ANSI_OSC_RE.sub("", s)
+        s = ANSI_CSI_RE.sub("", s)
+        s = s.replace("\x07", "")  # BEL
+        # Normalize CRs
+        s = s.replace("\r\n", "\n").replace("\r", "\n")
+        return s
+
     async def count_log_lines(self) -> int:
         async with self.log_lock:
             return self.log.count("\n")
@@ -488,7 +502,9 @@ class InteractiveShellView(ui.LayoutView):
                 if self.process.stdout:
                     data = await asyncio.wait_for(self.process.stdout.read(4096), timeout=0.2)
                     if data:
-                        await self.append_log(data.decode(errors="ignore"))
+                        text = data.decode(errors="ignore")
+                        text = self._sanitize_output(text)  # + strip control sequences
+                        await self.append_log(text)
                         got = True
             except asyncio.TimeoutError:
                 pass
