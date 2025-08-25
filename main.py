@@ -9,6 +9,7 @@ from logging.handlers import TimedRotatingFileHandler
 import logging
 from requests import get, Response
 import signal
+import sys
 
 # -----------------------Initiate all global variables--------------------------
 
@@ -40,7 +41,11 @@ SUPPORTED_SHELLS: list[str] = ["sh", "bash", "zsh", "powershell", "cmd"]
 DEFAULT_CMD_TIMEOUT: float = 5.0
 DEFAULT_SCROLL_AMOUNT: int = 5
 DEFAULT_SHELL: str = "bash"
-DEFAULT_SIGNAL: int = signal.SIGINT
+DEFAULT_SIGNAL: int
+if sys.platform == "win32":
+    DEFAULT_SIGNAL = signal.CTRL_C_EVENT
+else:
+    DEFAULT_SIGNAL = signal.SIGINT
 
 # Global variables
 CMD_TIMEOUT: float
@@ -131,11 +136,22 @@ def is_user_allowed(user: Union[User, Member]) -> bool:
     return user.id in WHITELIST
 
 
-def get_signal_options(default: int = signal.SIGINT) -> list[SelectOption]:
+def get_supported_signals() -> list[signal.Signals]:
+    if sys.platform == "win32":
+        return [signal.Signals.CTRL_C_EVENT, signal.Signals.CTRL_BREAK_EVENT]
+    return [signal.Signals.SIGINT, signal.Signals.SIGTERM]  # Maybe other signals are also useful in a linux terminal
+
+
+def get_signal_options(default: int = DEFAULT_SIGNAL) -> list[SelectOption]:
     options = []
-    for s in signal.valid_signals():
-        is_default = s.value == default
-        options.append(SelectOption(label=s.name, value=str(s.value), default=is_default))
+    for sig in get_supported_signals():
+        try:
+            if isinstance(sig, int):
+                sig = signal.Signals(sig)
+            is_default = sig.value == default
+            options.append(SelectOption(label=sig.name, value=str(sig.value), default=is_default))
+        except Exception:
+            pass
     return options
 
 
@@ -387,7 +403,7 @@ class InteractiveShellView(ui.LayoutView):
     async def signal_select(self, interaction: Interaction, select: ui.Select):
         await interaction.response.defer()
         self.selected_signal = int(select.values[0])
-        select.options = get_signal_options(self.selected_signal)
+        select.options = get_signal_options(default=self.selected_signal)
 
     @row_3.button(label="Send Signal", style=ButtonStyle.danger)
     async def send_signal_button(self, interaction: Interaction, button: ui.Button):
@@ -395,10 +411,11 @@ class InteractiveShellView(ui.LayoutView):
         if self.process and self.selected_signal is not None:
             try:
                 self.process.send_signal(self.selected_signal)
+                logging.info(f"Successfully sent signal: {self.selected_signal}")
             except ProcessLookupError:
                 logging.warning("Process not found.")
-            except ValueError:
-                logging.warning(f"Invalid signal: {self.selected_signal}")
+            except:
+                logging.warning(f"Unable to send signal: {self.selected_signal}")
 
     @row_3.button(label="Stop", style=ButtonStyle.danger)
     async def stop_button(self, interaction: Interaction, button: ui.Button):
@@ -429,7 +446,8 @@ class InteractiveShellView(ui.LayoutView):
 
             async def on_submit(self, modal_interaction: Interaction):
                 cmd = str(self.command.value)
-                line = (cmd + "\r\n").encode()
+                newline = "\r\n" if sys.platform == "win32" else "\n"
+                line = (cmd + newline).encode()
                 try:
                     if view_ref.process and view_ref.process.stdin:
                         view_ref.process.stdin.write(line)
