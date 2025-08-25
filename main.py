@@ -10,6 +10,9 @@ import logging
 from requests import get, Response
 import signal
 import sys
+import os
+import shlex
+import shutil
 
 # -----------------------Initiate all global variables--------------------------
 
@@ -276,13 +279,22 @@ class InteractiveShellView(ui.LayoutView):
         self.selected_signal: int = DEFAULT_SIGNAL
 
     async def start(self, shell: str = "cmd"):
-        if shell in ["sh", "bash", "zsh"]:
-            shell += " -i"
+        # Wrap POSIX shells with a PTY using `script` to avoid "no job control" warnings
+        env = None
+        env = os.environ.copy()
+        if sys.platform != "win32" and shell in ["sh", "bash", "zsh"]:
+            if shutil.which("script"):
+                shell = f"script -q -f -c {shlex.quote(shell + ' -i')} /dev/null"
+            else:
+                shell += " -i"
+            env.setdefault("TERM", "xterm")
+
         self.process = await asyncio.create_subprocess_shell(
             shell,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
+            env=env,
         )
         BOT.loop.create_task(self.interactive_session_loop_task())
         await self.render()
