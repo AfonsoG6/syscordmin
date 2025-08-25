@@ -342,6 +342,7 @@ class InteractiveShellView(ui.LayoutView):
                 if free == len(lines[i]):
                     body += lines[i]
                     footer = ""
+                    await self.set_auto_scroll()
                     break
                 elif free > len(lines[i]):
                     body += lines[i]
@@ -405,7 +406,7 @@ class InteractiveShellView(ui.LayoutView):
         self.selected_signal = int(select.values[0])
         select.options = get_signal_options(default=self.selected_signal)
 
-    @row_3.button(label="Send Signal", style=ButtonStyle.danger)
+    @row_3.button(id=100, label="Send Signal", style=ButtonStyle.danger)
     async def send_signal_button(self, interaction: Interaction, button: ui.Button):
         await interaction.response.defer()
         if self.process and self.selected_signal is not None:
@@ -417,7 +418,7 @@ class InteractiveShellView(ui.LayoutView):
             except:
                 logging.warning(f"Unable to send signal: {self.selected_signal}")
 
-    @row_3.button(label="Stop", style=ButtonStyle.danger)
+    @row_3.button(id=101, label="Stop", style=ButtonStyle.danger)
     async def stop_button(self, interaction: Interaction, button: ui.Button):
         view_ref = self
         try:
@@ -427,12 +428,16 @@ class InteractiveShellView(ui.LayoutView):
                 except ProcessLookupError:
                     pass
             await self.set_auto_scroll()
+            for i in range(100, 103):
+                item = view_ref.find_item(i)
+                if item:
+                    view_ref.remove_item(item)
             await self.render()
             await self.render_export(interaction, msg="Session ended. Here is the full log:")
         except Exception as e:
             logging.exception(e)
 
-    @row_3.button(label="Send Command", style=ButtonStyle.primary)
+    @row_3.button(id=102, label="Send Command", style=ButtonStyle.primary)
     async def send_command_button(self, interaction: Interaction, button: ui.Button):
         view_ref = self
 
