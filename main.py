@@ -276,11 +276,13 @@ class InteractiveShellView(ui.LayoutView):
         self.selected_signal: int = DEFAULT_SIGNAL
 
     async def start(self, shell: str = "cmd"):
+        if shell in ["sh", "bash", "zsh"]:
+            shell += " -i"
         self.process = await asyncio.create_subprocess_shell(
             shell,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
         )
         BOT.loop.create_task(self.interactive_session_loop_task())
         await self.render()
@@ -475,14 +477,6 @@ class InteractiveShellView(ui.LayoutView):
                     data = await asyncio.wait_for(self.process.stdout.read(4096), timeout=0.2)
                     if data:
                         await self.append_log(data.decode(errors="ignore"))
-                        got = True
-            except asyncio.TimeoutError:
-                pass
-            try:
-                if self.process.stderr:
-                    data_err = await asyncio.wait_for(self.process.stderr.read(4096), timeout=0.2)
-                    if data_err:
-                        await self.append_log(data_err.decode(errors="ignore"))
                         got = True
             except asyncio.TimeoutError:
                 pass
