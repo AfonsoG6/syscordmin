@@ -31,7 +31,7 @@ To set up Syscordmin as a systemd service, create a service file for it:
 
 2. Add the following content to the service file:
 
-    ```toml
+    ```txt
     [Unit]
     Description=Syscordmin Discord Bot
     After=network-online.target
