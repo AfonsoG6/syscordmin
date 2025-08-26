@@ -104,9 +104,9 @@ def load_default_cmd_timeout() -> None:
     if env is not None:
         try:
             DEFAULT_CMD_TIMEOUT = float(env.strip())
-            CMD_TIMEOUT = DEFAULT_CMD_TIMEOUT
         except ValueError:
             logging.error(f"Invalid DEFAULT_CMD_TIMEOUT value: {env}")
+    CMD_TIMEOUT = DEFAULT_CMD_TIMEOUT
 
 
 def load_default_scroll_amount() -> None:
@@ -115,9 +115,9 @@ def load_default_scroll_amount() -> None:
     if env is not None:
         try:
             DEFAULT_SCROLL_AMOUNT = int(env.strip())
-            SCROLL_AMOUNT = DEFAULT_SCROLL_AMOUNT
         except ValueError:
             logging.error(f"Invalid DEFAULT_SCROLL_AMOUNT value: {env}")
+    SCROLL_AMOUNT = DEFAULT_SCROLL_AMOUNT
 
 
 def load_default_shell() -> None:
@@ -307,7 +307,7 @@ class InteractiveShellView(ui.LayoutView):
         BOT.loop.create_task(self.interactive_session_loop_task())
         await self.render()
 
-    def _sanitize_output(self, s: str) -> str:
+    def sanitize_output(self, s: str) -> str:
         # Remove OSC (window title) and CSI (colors, bracketed paste) sequences and BELs
         s = ANSI_OSC_RE.sub("", s)
         s = ANSI_CSI_RE.sub("", s)
@@ -437,54 +437,53 @@ class InteractiveShellView(ui.LayoutView):
         await interaction.response.defer()
         self.selected_signal = int(select.values[0])
         select.options = get_signal_options(default=self.selected_signal)
+    
+    def get_child_process(self, depth: int = 1) -> int:
+        # Known depths from testing: 0=Term, 1=Script, 2=Shell, 3=Command
+        if depth < 1:
+            raise ValueError("Depth must be at least 1")
+        assert self.process
+        process = psutil.Process(self.process.pid)
+        for i in range(0, depth):
+            children = [c for c in process.children() if c.is_running() and c.status() != psutil.STATUS_ZOMBIE]
+            assert children
+            most_recent_child_pid = max(children, key=lambda c: c.create_time()).pid
+            process = psutil.Process(most_recent_child_pid)
+        return process.pid
 
-    @row_3.button(id=100, label="Send Signal", style=ButtonStyle.danger)
+    @row_3.button(label="Send Signal", style=ButtonStyle.danger)
     async def send_signal_button(self, interaction: Interaction, button: ui.Button):
         await interaction.response.defer()
         if self.process and self.selected_signal is not None:
             try:
                 sig_value = int(self.selected_signal)
-                parent_proc = psutil.Process(self.process.pid)
-                
-                # Find the PID of the child process of self.process and send the signal to that PID
-                children = [c for c in parent_proc.children(recursive=False) if c.is_running() and c.status() != psutil.STATUS_ZOMBIE]
-                assert children
-                for c in children:
-                    print(f"PID: {c.pid}, Name: {c.name()}, Status: {c.status()}, {c.children()}")
-                    for gc in c.children():
-                        print(f"\tPID: {gc.pid}, Name: {gc.name()}, Status: {gc.status()}")
-                child = max(children, key=lambda c: (c.create_time() or 0))
-
-                if sys.platform == "win32":
-                    psutil.Process(child.pid).send_signal(sig_value)
-                else:
-                    os.kill(child.pid, sig_value)
-                logging.info(f"Successfully sent signal: {self.selected_signal}")
+                command_pid = self.get_child_process(depth=3)
+                psutil.Process(command_pid).send_signal(sig_value)
             except ProcessLookupError:
                 logging.warning("Process not found.")
             except:
                 logging.warning(f"Unable to send signal: {self.selected_signal}")
 
-    @row_3.button(id=101, label="Stop", style=ButtonStyle.danger)
+    @row_3.button(label="Stop", style=ButtonStyle.danger)
     async def stop_button(self, interaction: Interaction, button: ui.Button):
-        view_ref = self
+        await interaction.response.defer()
         try:
-            if view_ref.process and view_ref.process.returncode is None:
-                try:
-                    view_ref.process.terminate()
-                except ProcessLookupError:
-                    pass
+            try:
+                assert self.process
+                self.process.terminate()
+            except:
+                pass
+            self.signal_select.disabled = True
+            self.send_signal_button.disabled = True
+            self.stop_button.disabled = True
+            self.send_command_button.disabled = True
             await self.set_auto_scroll()
-            for i in range(100, 103):
-                item = view_ref.find_item(i)
-                if item:
-                    view_ref.remove_item(item)
+            await self.append_log("\n[Interactive shell terminated]\n")
             await self.render()
-            await self.render_export(interaction, msg="Session ended. Here is the full log:")
         except Exception as e:
             logging.exception(e)
 
-    @row_3.button(id=102, label="Send Command", style=ButtonStyle.primary)
+    @row_3.button(label="Send Command", style=ButtonStyle.primary)
     async def send_command_button(self, interaction: Interaction, button: ui.Button):
         view_ref = self
 
@@ -522,7 +521,7 @@ class InteractiveShellView(ui.LayoutView):
                     data = await asyncio.wait_for(self.process.stdout.read(4096), timeout=0.2)
                     if data:
                         text = data.decode(errors="ignore")
-                        text = self._sanitize_output(text)  # + strip control sequences
+                        text = self.sanitize_output(text)
                         await self.append_log(text)
                         got = True
             except asyncio.TimeoutError:
@@ -534,7 +533,7 @@ class InteractiveShellView(ui.LayoutView):
                     await self.render()
                 except Exception as e:
                     logging.exception(e)
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.2)
 
 
 # Add describe to set argument 1 as shell to use
